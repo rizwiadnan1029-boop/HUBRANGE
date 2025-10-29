@@ -1,81 +1,192 @@
-from flask import Flask, render_template, jsonify
-import pandas as pd
-
-app = Flask(__name__)
-
-# 🔗 Correct published Google Sheets CSV link (must end with ?output=csv)
-EXCEL_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vTPIR5j2TyzJAorJsGX9reIhOXQKrTfyDbbv2GreXPDf2nWcBCddhoedW93yEaK1S93imugCke-dRD_/pub?output=csv"
-
-def load_data():
-    df = pd.read_csv(EXCEL_URL)
-    df.columns = df.columns.str.strip().str.upper()  # normalize headers
-    df.fillna("NO DATA", inplace=True)
-    return df
-
-@app.route('/')
-def home():
-    return render_template("index.html")
-
-@app.route('/month/<month>')
-def get_month_data(month):
-    try:
-        df = load_data()
-
-        if 'MONTH' not in df.columns:
-            return jsonify({"error": "Google Sheet missing required column: MONTH"})
-
-        mask = df['MONTH'].astype(str).str.strip().str.upper() == month.strip().upper()
-        month_rows = df[mask]
-
-        if month_rows.empty:
-            return jsonify({"error": f"No data found for {month}"})
-
-        row = month_rows.iloc[0].to_dict()
-
-        days_in_month = int(row.get("NO. OF DAYS IN MONTH", 0))
-        days_coming = int(row.get("NO. OF DAYS COMING", 0))
-        days_absent = days_in_month - days_coming
-        total_bill = days_coming * 50  # ₹50/day automatically calculated
-
-        result = {
-            "Month": row.get("MONTH", month),
-            "Paid": row.get("PAID", "NO DATA"),
-            "Days in Month": days_in_month,
-            "Days Coming": days_coming,
-            "Days Absent": days_absent,
-            "Amount": f"{total_bill:.2f}",
-            "Payment Mode": row.get("PAYMENT MODE", "NO DATA")
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Milk Data Viewer</title>
+    <style>
+        :root {
+            --bg: linear-gradient(135deg, #f8b500, #fceabb);
+            --text: #2c3e50;
+            --card-bg: white;
+        }
+        body.dark {
+            --bg: linear-gradient(135deg, #0f2027, #203a43, #2c5364);
+            --text: #ecf0f1;
+            --card-bg: #1e272e;
         }
 
-        return jsonify(result)
+        body {
+            font-family: 'Poppins', sans-serif;
+            text-align: center;
+            margin: 0;
+            background: var(--bg);
+            min-height: 100vh;
+            padding: 30px;
+            color: var(--text);
+            transition: background 0.5s, color 0.5s;
+        }
 
-    except Exception as e:
-        return jsonify({"error": f"Error loading data: {e}"})
+        h1 {
+            font-size: 2.3em;
+            margin-bottom: 25px;
+        }
 
+        #buttons {
+            display: flex;
+            flex-wrap: wrap;
+            justify-content: center;
+            gap: 10px;
+            margin-bottom: 40px;
+        }
 
-# 💰 Auto Annual Spend (SUM of all months)
-@app.route('/annual')
-def get_annual_spend():
-    try:
-        df = load_data()
+        button {
+            padding: 12px 20px;
+            border-radius: 10px;
+            border: none;
+            cursor: pointer;
+            background: linear-gradient(135deg, #3498db, #1abc9c);
+            color: white;
+            font-weight: bold;
+            box-shadow: 0 4px 10px rgba(0,0,0,0.2);
+            transition: transform 0.2s ease, background 0.3s ease;
+        }
 
-        # Ensure required column exists
-        if 'NO. OF DAYS COMING' not in df.columns:
-            return jsonify({"error": "Missing column: NO. OF DAYS COMING"})
+        button:hover {
+            transform: scale(1.08);
+            background: linear-gradient(135deg, #16a085, #2980b9);
+        }
 
-        # Convert to numbers and fill invalid with 0
-        df["NO. OF DAYS COMING"] = pd.to_numeric(df["NO. OF DAYS COMING"], errors='coerce').fillna(0)
+        #output {
+            background: var(--card-bg);
+            max-width: 420px;
+            margin: 0 auto;
+            border-radius: 20px;
+            padding: 25px;
+            box-shadow: 0 10px 25px rgba(0,0,0,0.3);
+            color: var(--text);
+            font-size: 17px;
+            line-height: 1.6;
+            transition: all 0.4s ease;
+        }
 
-        # 💡 Total of all months = sum of (days coming × ₹50)
-        total_annual_spend = (df["NO. OF DAYS COMING"] * 50).sum()
+        #output h2 {
+            background: linear-gradient(135deg, #e67e22, #f1c40f);
+            color: white;
+            padding: 10px 0;
+            border-radius: 10px;
+            margin-bottom: 20px;
+        }
 
-        return jsonify({
-            "Total Annual Spend": f"{total_annual_spend:.2f}"
-        })
+        #annual {
+            margin-top: 25px;
+            background: linear-gradient(135deg, #8e44ad, #9b59b6);
+        }
 
-    except Exception as e:
-        return jsonify({"error": f"Error calculating annual spend: {e}"})
+        footer {
+            margin-top: 50px;
+            font-weight: bold;
+            opacity: 0.8;
+        }
 
+        .toggle-btn {
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            background: #34495e;
+            color: white;
+            border: none;
+            border-radius: 20px;
+            padding: 8px 14px;
+            cursor: pointer;
+            transition: background 0.3s;
+        }
 
-if __name__ == '__main__':
-    app.run(host="0.0.0.0", port=5000, debug=True)
+        .toggle-btn:hover {
+            background: #2ecc71;
+        }
+    </style>
+</head>
+<body>
+    <button class="toggle-btn" onclick="toggleTheme()">🌙 Night / ☀️ Day</button>
+
+    <h1>🥛 Milk Data Month-wise</h1>
+
+    <div id="buttons">
+        <script>
+            const months = [
+                "January","February","March","April","May","June",
+                "July","August","September","October","November","December"
+            ];
+            months.forEach(m => {
+                document.write(`<button onclick="getData('${m}')">${m}</button>`);
+            });
+        </script>
+    </div>
+
+    <div id="output">Click a month to view milk data.</div>
+
+    <button id="annual" onclick="getAnnual()">💰 View Annual Spend</button>
+    <div id="annualResult"></div>
+
+    <footer>
+        Powered by Flask & Google Sheets ✨
+        <div class="credit">Made by Farhan</div>
+    </footer>
+
+    <script>
+        // 🌗 Theme Toggle with Memory
+        const theme = localStorage.getItem("theme");
+        if (theme === "dark") document.body.classList.add("dark");
+
+        function toggleTheme() {
+            document.body.classList.toggle("dark");
+            localStorage.setItem("theme", document.body.classList.contains("dark") ? "dark" : "light");
+        }
+
+        // ⚡ Fetch Month Data
+        async function getData(month) {
+            const out = document.getElementById("output");
+            out.innerHTML = `<h2>${month}</h2><div>Loading...</div>`;
+
+            try {
+                const res = await fetch(`/month/${month}`, { cache: "no-store" });
+                const data = await res.json();
+
+                if (data.error) {
+                    out.innerHTML = `<b style='color:red;'>${data.error}</b>`;
+                    return;
+                }
+
+                out.innerHTML = `
+                    <h2>${data.Month}</h2>
+                    <div><b>Paid:</b> ${data.Paid}</div>
+                    <div><b>No. of Days in Month:</b> ${data["Days in Month"]}</div>
+                    <div><b>No. of Days Coming:</b> ${data["Days Coming"]}</div>
+                    <div><b>No. of Days Absent:</b> ${data["Days Absent"]}</div>
+                    <div><b>Amount (₹50/day):</b> ₹${data.Amount}</div>
+                    <div><b>Payment Mode:</b> ${data["Payment Mode"]}</div>
+                `;
+            } catch (err) {
+                out.innerHTML = `<b style='color:red;'>Error loading data.</b>`;
+            }
+        }
+
+        // 💰 Fetch Total Annual Spend
+        async function getAnnual() {
+            const resultDiv = document.getElementById("annualResult");
+            resultDiv.innerHTML = "Calculating...";
+            try {
+                const res = await fetch("/annual", { cache: "no-store" });
+                const data = await res.json();
+                if (data.error) {
+                    resultDiv.innerHTML = `<b style='color:red;'>${data.error}</b>`;
+                    return;
+                }
+                resultDiv.innerHTML = `<h3>Total Annual Spend: ₹${data["Total Annual Spend"]}</h3>`;
+            } catch {
+                resultDiv.innerHTML = "<b style='color:red;'>Error calculating total.</b>";
+            }
+        }
+    </script>
+</body>
+</html>
