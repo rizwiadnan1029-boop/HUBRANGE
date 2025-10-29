@@ -77,11 +77,6 @@
             margin-bottom: 20px;
         }
 
-        #annual {
-            margin-top: 25px;
-            background: linear-gradient(135deg, #8e44ad, #9b59b6);
-        }
-
         footer {
             margin-top: 50px;
             font-weight: bold;
@@ -104,6 +99,10 @@
         .toggle-btn:hover {
             background: #2ecc71;
         }
+
+        #annual-spend {
+            margin-top: 25px;
+        }
     </style>
 </head>
 <body>
@@ -125,8 +124,10 @@
 
     <div id="output">Click a month to view milk data.</div>
 
-    <button id="annual" onclick="getAnnual()">💰 View Annual Spend</button>
-    <div id="annualResult"></div>
+    <div id="annual-spend">
+        <button onclick="getAnnual()">💰 View Annual Spend</button>
+        <div id="annual-output"></div>
+    </div>
 
     <footer>
         Powered by Flask & Google Sheets ✨
@@ -143,7 +144,7 @@
             localStorage.setItem("theme", document.body.classList.contains("dark") ? "dark" : "light");
         }
 
-        // ⚡ Fetch Month Data
+        // ⚡ Fast Data Fetch
         async function getData(month) {
             const out = document.getElementById("output");
             out.innerHTML = `<h2>${month}</h2><div>Loading...</div>`;
@@ -162,7 +163,7 @@
                     <div><b>Paid:</b> ${data.Paid}</div>
                     <div><b>No. of Days in Month:</b> ${data["Days in Month"]}</div>
                     <div><b>No. of Days Coming:</b> ${data["Days Coming"]}</div>
-                    <div><b>No. of Days Absent:</b> ${data["Days Absent"]}</div>
+                    <div><b>Days Absent:</b> ${data["Days Absent"]}</div>
                     <div><b>Amount (₹50/day):</b> ₹${data.Amount}</div>
                     <div><b>Payment Mode:</b> ${data["Payment Mode"]}</div>
                 `;
@@ -171,20 +172,22 @@
             }
         }
 
-        // 💰 Fetch Total Annual Spend
+        // 💰 Fetch Annual Spend
         async function getAnnual() {
-            const resultDiv = document.getElementById("annualResult");
-            resultDiv.innerHTML = "Calculating...";
+            const annualOut = document.getElementById("annual-output");
+            annualOut.innerHTML = "Calculating...";
             try {
                 const res = await fetch("/annual", { cache: "no-store" });
                 const data = await res.json();
+
                 if (data.error) {
-                    resultDiv.innerHTML = `<b style='color:red;'>${data.error}</b>`;
+                    annualOut.innerHTML = `<b style='color:red;'>${data.error}</b>`;
                     return;
                 }
-                resultDiv.innerHTML = `<h3>Total Annual Spend: ₹${data["Total Annual Spend"]}</h3>`;
-            } catch {
-                resultDiv.innerHTML = "<b style='color:red;'>Error calculating total.</b>";
+
+                annualOut.innerHTML = `<b>Total Annual Spend:</b> ₹${data["Total Annual Spend"]}`;
+            } catch (err) {
+                annualOut.innerHTML = `<b style='color:red;'>Error loading data.</b>`;
             }
         }
     </script>
