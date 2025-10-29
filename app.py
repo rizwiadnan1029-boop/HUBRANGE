@@ -3,12 +3,13 @@ import pandas as pd
 
 app = Flask(__name__)
 
-# 🔗 Correct published Google Sheets CSV link (must end with ?output=csv)
+# 🔗 Use your correct published Google Sheets CSV link (must end with ?output=csv)
 EXCEL_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vTPIR5j2TyzJAorJsGX9reIhOXQKrTfyDbbv2GreXPDf2nWcBCddhoedW93yEaK1S93imugCke-dRD_/pub?output=csv"
 
 def load_data():
     df = pd.read_csv(EXCEL_URL)
-    df.columns = df.columns.str.strip().str.upper()  # normalize headers
+    # Normalize headers
+    df.columns = df.columns.str.strip().str.upper()
     df.fillna("NO DATA", inplace=True)
     return df
 
@@ -24,6 +25,7 @@ def get_month_data(month):
         if 'MONTH' not in df.columns:
             return jsonify({"error": "Google Sheet missing required column: MONTH"})
 
+        # Find matching row (case-insensitive)
         mask = df['MONTH'].astype(str).str.strip().str.upper() == month.strip().upper()
         month_rows = df[mask]
 
@@ -32,10 +34,15 @@ def get_month_data(month):
 
         row = month_rows.iloc[0].to_dict()
 
+        # Get numeric fields safely
         days_in_month = int(row.get("NO. OF DAYS IN MONTH", 0))
         days_coming = int(row.get("NO. OF DAYS COMING", 0))
-        days_absent = days_in_month - days_coming
-        total_bill = days_coming * 50  # ₹50/day automatically calculated
+
+        # ✅ Use "DAYS ABSENT" from sheet (no auto calculation)
+        days_absent = row.get("DAYS ABSENT", "NO DATA")
+
+        # Auto-calculate only the total bill
+        total_bill = days_coming * 50  # ₹50/day
 
         result = {
             "Month": row.get("MONTH", month),
